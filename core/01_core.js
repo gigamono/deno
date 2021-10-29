@@ -12,17 +12,14 @@
     Map,
     Array,
     ArrayPrototypeFill,
-    ArrayPrototypeMap,
     ErrorCaptureStackTrace,
     Promise,
-    ObjectEntries,
     ObjectFreeze,
     ObjectFromEntries,
     MapPrototypeGet,
     MapPrototypeDelete,
     MapPrototypeSet,
     PromisePrototypeThen,
-    ObjectAssign,
   } = window.__bootstrap.primordials;
 
   // Available on start due to bindings.
@@ -53,7 +50,7 @@
       MapPrototypeSet(promiseMap, oldPromiseId, oldPromise);
     }
     // Set new promise
-    return promiseRing[idx] = newPromise();
+    return (promiseRing[idx] = newPromise());
   }
 
   function getPromise(promiseId) {
@@ -80,10 +77,6 @@
     promise.resolve = resolve;
     promise.reject = reject;
     return promise;
-  }
-
-  function ops() {
-    return opsCache;
   }
 
   function syncOpsCache() {
@@ -116,9 +109,11 @@
     if (res?.$err_class_name) {
       const className = res.$err_class_name;
       const errorBuilder = errorMap[className];
-      const err = errorBuilder ? errorBuilder(res.message) : new Error(
-        `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`,
-      );
+      const err = errorBuilder
+        ? errorBuilder(res.message)
+        : new Error(
+            `Unregistered error class: "${className}"\n  ${res.message}\n  Classes of errors returned from ops should be registered via Deno.core.registerErrorClass().`
+          );
       // Strip unwrapOpResult() and errorBuilder() calls from stack trace
       ErrorCaptureStackTrace(err, unwrapOpResult);
       throw err;
@@ -138,66 +133,16 @@
     return unwrapOpResult(opcallSync(opsCache[opName], arg1, arg2));
   }
 
-  function resources() {
-    return ObjectFromEntries(opSync("op_resources"));
-  }
-
-  function close(rid) {
-    opSync("op_close", rid);
-  }
-
-  function tryClose(rid) {
-    opSync("op_try_close", rid);
-  }
-
   function print(str, isErr = false) {
     opSync("op_print", str, isErr);
   }
 
-  function metrics() {
-    const [aggregate, perOps] = opSync("op_metrics");
-    aggregate.ops = ObjectFromEntries(ArrayPrototypeMap(
-      ObjectEntries(opsCache),
-      ([opName, opId]) => [opName, perOps[opId]],
-    ));
-    return aggregate;
-  }
-
-  // Some "extensions" rely on "BadResource" and "Interrupted" errors in the
-  // JS code (eg. "deno_net") so they are provided in "Deno.core" but later
-  // reexported on "Deno.errors"
-  class BadResource extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "BadResource";
-    }
-  }
-
-  class Interrupted extends Error {
-    constructor(msg) {
-      super(msg);
-      this.name = "Interrupted";
-    }
-  }
-
-  // Extra Deno.core.* exports
-  const core = ObjectAssign(globalThis.Deno.core, {
+  // Removing deno namespace in order to control the host interface more closely.
+  globalThis.__bootstrap.core = {
     opAsync,
     opSync,
-    ops,
-    close,
-    tryClose,
     print,
-    resources,
-    metrics,
-    registerErrorBuilder,
-    registerErrorClass,
     opresolve,
     syncOpsCache,
-    BadResource,
-    Interrupted,
-  });
-
-  ObjectAssign(globalThis.__bootstrap, { core });
-  ObjectAssign(globalThis.Deno, { core });
+  };
 })(globalThis);

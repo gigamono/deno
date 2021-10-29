@@ -15,25 +15,17 @@ use std::io::{stderr, stdout, Write};
 use std::rc::Rc;
 
 pub(crate) fn init_builtins() -> Extension {
+  // Removing feature we don't need for now.
   Extension::builder()
     .js(include_js_files!(
       prefix "deno:core",
       "00_primordials.js",
       "01_core.js",
-      "02_error.js",
     ))
     .ops(vec![
       ("op_close", op_sync(op_close)),
       ("op_try_close", op_sync(op_try_close)),
       ("op_print", op_sync(op_print)),
-      ("op_resources", op_sync(op_resources)),
-      ("op_wasm_streaming_feed", op_sync(op_wasm_streaming_feed)),
-      ("op_wasm_streaming_abort", op_sync(op_wasm_streaming_abort)),
-      (
-        "op_wasm_streaming_set_url",
-        op_sync(op_wasm_streaming_set_url),
-      ),
-      ("op_metrics", op_sync(op_metrics)),
       ("op_void_sync", void_op_sync()),
       ("op_void_async", void_op_async()),
     ])
