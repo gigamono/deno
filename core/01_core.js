@@ -143,6 +143,8 @@
     opSync,
     print,
     opresolve,
+    registerErrorClass,
+    registerErrorBuilder,
     syncOpsCache,
   };
 })(globalThis);
