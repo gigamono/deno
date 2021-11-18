@@ -8,7 +8,7 @@ use crate::tools::lint::create_linter;
 use crate::tools::lint::get_configured_rules;
 
 use deno_ast::SourceTextInfo;
-use deno_core::error::anyhow;
+use deno_core::anyhow::anyhow;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
@@ -132,8 +132,7 @@ pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   maybe_lint_config: Option<&LintConfig>,
 ) -> Result<Vec<Reference>, AnyError> {
-  let lint_rules =
-    get_configured_rules(maybe_lint_config, vec![], vec![], vec![])?;
+  let lint_rules = get_configured_rules(maybe_lint_config, None, None, None)?;
   let linter = create_linter(parsed_source.media_type(), lint_rules);
   let lint_diagnostics = linter.lint_with_ast(parsed_source);
 

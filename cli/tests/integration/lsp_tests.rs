@@ -1066,6 +1066,206 @@ fn lsp_hover_dependency() {
   );
 }
 
+// This tests for a regression covered by denoland/deno#12753 where the lsp was
+// unable to resolve dependencies when there was an invalid syntax in the module
+#[test]
+fn lsp_hover_deps_preserved_when_invalid_parse() {
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file1.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "export type Foo = { bar(): string };\n"
+      }
+    }),
+  );
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file2.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import { Foo } from './file1.ts'; declare const f: Foo; f\n"
+      }
+    }),
+  );
+  let (maybe_res, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file2.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 56
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_error.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "const f: Foo",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 56,
+        },
+        "end": {
+          "line": 0,
+          "character": 57,
+        }
+      }
+    }))
+  );
+  client
+    .write_notification(
+      "textDocument/didChange",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file2.ts",
+          "version": 2
+        },
+        "contentChanges": [
+          {
+            "range": {
+              "start": {
+                "line": 0,
+                "character": 57
+              },
+              "end": {
+                "line": 0,
+                "character": 58
+              }
+            },
+            "text": "."
+          }
+        ]
+      }),
+    )
+    .unwrap();
+  let (maybe_res, maybe_error) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file2.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 56
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_error.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": [
+        {
+          "language": "typescript",
+          "value": "const f: Foo",
+        },
+        ""
+      ],
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 56,
+        },
+        "end": {
+          "line": 0,
+          "character": 57,
+        }
+      }
+    }))
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_hover_typescript_types() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "import * as a from \"http://127.0.0.1:4545/xTypeScriptTypes.js\";\n\nconsole.log(a.foo);\n",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.ts",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/xTypeScriptTypes.js",
+          }
+        ],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.ts"
+        },
+        "position": {
+          "line": 0,
+          "character": 24
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_res.is_some());
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    json!(maybe_res.unwrap()),
+    json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.js\n\n**Types**: http&#8203;://127.0.0.1:4545/xTypeScriptTypes.d.ts\n"
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 19
+        },
+        "end": {
+          "line": 0,
+          "character": 62
+        }
+      }
+    })
+  );
+  shutdown(&mut client);
+}
+
 #[test]
 fn lsp_call_hierarchy() {
   let mut client = init("initialize_params.json");
@@ -1931,15 +2131,24 @@ fn lsp_signature_help() {
       "signatures": [
         {
           "label": "add(a: number, b: number): number",
-          "documentation": "Adds two numbers.",
+          "documentation": {
+            "kind": "markdown",
+            "value": "Adds two numbers."
+          },
           "parameters": [
             {
               "label": "a: number",
-              "documentation": "This is a first number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a first number."
+              }
             },
             {
               "label": "b: number",
-              "documentation": "This is a second number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a second number."
+              }
             }
           ]
         }
@@ -1995,15 +2204,24 @@ fn lsp_signature_help() {
       "signatures": [
         {
           "label": "add(a: number, b: number): number",
-          "documentation": "Adds two numbers.",
+          "documentation": {
+            "kind": "markdown",
+            "value": "Adds two numbers."
+          },
           "parameters": [
             {
               "label": "a: number",
-              "documentation": "This is a first number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a first number."
+              }
             },
             {
               "label": "b: number",
-              "documentation": "This is a second number."
+              "documentation": {
+                "kind": "markdown",
+                "value": "This is a second number."
+              }
             }
           ]
         }
@@ -2792,6 +3010,64 @@ fn lsp_diagnostics_warn() {
       }],
       version: Some(1),
     })
+  );
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_diagnostics_deprecated() {
+  let mut client = init("initialize_params.json");
+  let diagnostics = did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.ts",
+        "languageId": "typescript",
+        "version": 1,
+        "text": "/** @deprecated */\nexport const a = \"a\";\n\na;\n",
+      },
+    }),
+  );
+  assert_eq!(
+    json!(diagnostics),
+    json!([
+      {
+        "uri": "file:///a/file.ts",
+        "diagnostics": [],
+        "version": 1
+      },
+      {
+        "uri": "file:///a/file.ts",
+        "diagnostics": [],
+        "version": 1
+      },
+      {
+        "uri": "file:///a/file.ts",
+        "diagnostics": [
+          {
+            "range": {
+              "start": {
+                "line": 3,
+                "character": 0
+              },
+              "end": {
+                "line": 3,
+                "character": 1
+              }
+            },
+            "severity": 4,
+            "code": 6385,
+            "source": "deno-ts",
+            "message": "'a' is deprecated.",
+            "relatedInformation": [],
+            "tags": [
+              2
+            ]
+          }
+        ],
+        "version": 1
+      }
+    ])
   );
   shutdown(&mut client);
 }
@@ -3594,5 +3870,84 @@ fn lsp_lint_with_config() {
       Some(lsp::NumberOrString::String("ban-untagged-todo".to_string()))
     );
   }
+  shutdown(&mut client);
+}
+
+#[test]
+fn lsp_jsx_import_source_pragma() {
+  let _g = http_server();
+  let mut client = init("initialize_params.json");
+  did_open(
+    &mut client,
+    json!({
+      "textDocument": {
+        "uri": "file:///a/file.tsx",
+        "languageId": "typescriptreact",
+        "version": 1,
+        "text":
+"/** @jsxImportSource http://localhost:4545/jsx */
+
+function A() {
+  return \"hello\";
+}
+
+export function B() {
+  return <A></A>;
+}
+",
+      }
+    }),
+  );
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "deno/cache",
+      json!({
+        "referrer": {
+          "uri": "file:///a/file.tsx",
+        },
+        "uris": [
+          {
+            "uri": "http://127.0.0.1:4545/jsx/jsx-runtime",
+          }
+        ],
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert!(maybe_res.is_some());
+  let (maybe_res, maybe_err) = client
+    .write_request::<_, _, Value>(
+      "textDocument/hover",
+      json!({
+        "textDocument": {
+          "uri": "file:///a/file.tsx"
+        },
+        "position": {
+          "line": 0,
+          "character": 25
+        }
+      }),
+    )
+    .unwrap();
+  assert!(maybe_err.is_none());
+  assert_eq!(
+    maybe_res,
+    Some(json!({
+      "contents": {
+        "kind": "markdown",
+        "value": "**Resolved Dependency**\n\n**Code**: http&#8203;://localhost:4545/jsx/jsx-runtime\n",
+      },
+      "range": {
+        "start": {
+          "line": 0,
+          "character": 21
+        },
+        "end": {
+          "line": 0,
+          "character": 46
+        }
+      }
+    }))
+  );
   shutdown(&mut client);
 }
