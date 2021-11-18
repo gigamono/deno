@@ -1,3 +1,5 @@
+## To Be Deleted Eventually. Stopped relying on custom stuff
+
 # Deno
 
 [![Build Status - Cirrus][]][Build status] [![Twitter handle][]][Twitter badge]
